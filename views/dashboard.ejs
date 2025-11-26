@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Task App</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; }
+    .navbar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .navbar h1 { font-size: 24px; }
+    .navbar button { background: rgba(255,255,255,0.2); color: white; border: 1px solid white; padding: 8px 16px; border-radius: 5px; cursor: pointer; }
+    .navbar button:hover { background: rgba(255,255,255,0.3); }
+    .container { max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    .add-task { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 30px; }
+    .add-task h2 { margin-bottom: 15px; color: #333; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; color: #555; }
+    input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+    textarea { resize: vertical; }
+    .btn-add { background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+    .btn-add:hover { background: #764ba2; }
+    .tasks { background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+    .task-item { padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .task-item:last-child { border-bottom: none; }
+    .task-content { flex: 1; }
+    .task-title { font-size: 18px; color: #333; font-weight: 600; }
+    .task-desc { color: #666; font-size: 14px; margin-top: 5px; }
+    .task-status { display: inline-block; padding: 5px 10px; border-radius: 3px; font-size: 12px; margin-top: 10px; }
+    .status-pendiente { background: #fff3cd; color: #856404; }
+    .status-completada { background: #d4edda; color: #155724; }
+    .task-actions { display: flex; gap: 10px; }
+    .btn-delete { background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 3px; cursor: pointer; }
+    .btn-delete:hover { background: #c0392b; }
+    .btn-complete { background: #27ae60; color: white; border: none; padding: 8px 12px; border-radius: 3px; cursor: pointer; }
+    .btn-complete:hover { background: #229954; }
+    .empty { text-align: center; padding: 40px; color: #999; }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; }
+    .modal-content { background: white; padding: 30px; border-radius: 10px; max-width: 400px; width: 90%; }
+    .modal h2 { margin-bottom: 20px; color: #333; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .modal button { flex: 1; padding: 10px; border: none; border-radius: 5px; cursor: pointer; }
+    .btn-setup-2fa { background: #3498db; color: white; }
+    .btn-setup-2fa:hover { background: #2980b9; }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <div>
+      <h1>📝 Task App</h1>
+      <p id="username" style="font-size: 14px; opacity: 0.9;"></p>
+    </div>
+    <div>
+      <button id="setup2FABtn">🔐 Configurar 2FA</button>
+      <button onclick="logout()" style="margin-left: 10px;">Salir</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="add-task">
+      <h2>Nueva Tarea</h2>
+      <form id="addTaskForm">
+        <div class="form-group">
+          <label>Título:</label>
+          <input type="text" id="taskTitle" required>
+        </div>
+        <div class="form-group">
+          <label>Descripción:</label>
+          <textarea id="taskDesc" rows="3"></textarea>
+        </div>
+        <button type="submit" class="btn-add">➕ Agregar Tarea</button>
+      </form>
+    </div>
+
+    <div class="tasks" id="tasksList">
+      <div class="empty">No hay tareas. ¡Crea una nueva!</div>
+    </div>
+  </div>
+
+  <!-- Modal 2FA -->
+  <div class="modal" id="modal2FA">
+    <div class="modal-content">
+      <h2>Configurar Autenticación 2FA</h2>
+      <p style="margin-bottom: 15px; color: #666;">Sigue estos pasos:</p>
+      <ol style="margin-bottom: 15px; margin-left: 20px; color: #666;">
+        <li>Escanea este código QR con Google Authenticator u otra app similar</li>
+        <li>Ingresa el código de 6 dígitos generado</li>
+      </ol>
+      <div id="qrCode" style="text-align: center; margin-bottom: 15px;"></div>
+      <div class="form-group">
+        <label>Código secreto (base32):</label>
+        <input type="text" id="secretCode" readonly style="background: #f5f5f5;">
+      </div>
+      <div class="form-group">
+        <label>Ingresa el código de 6 dígitos:</label>
+        <input type="text" id="codeVerify" maxlength="6" pattern="[0-9]{6}">
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeModal2FA()">Cancelar</button>
+        <button class="btn-setup-2fa" onclick="confirm2FA()">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let username = '';
+
+    // Cargar nombre de usuario
+    async function loadUsername() {
+      const response = await fetch('/api/tasks/');
+      if (response.ok) {
+        username = localStorage.getItem('username') || 'Usuario';
+        document.getElementById('username').textContent = `Bienvenido, ${username}`;
+      }
+    }
+
+    // Cargar tareas
+    async function loadTasks() {
+      try {
+        const response = await fetch('/api/tasks/');
+        if (response.ok) {
+          const data = await response.json();
+          renderTasks(data.tasks);
+        }
+      } catch (error) {
+        console.error('Error cargando tareas:', error);
+      }
+    }
+
+    // Renderizar tareas
+    function renderTasks(tasks) {
+      const container = document.getElementById('tasksList');
+      if (tasks.length === 0) {
+        container.innerHTML = '<div class="empty">No hay tareas. ¡Crea una nueva!</div>';
+        return;
+      }
+
+      container.innerHTML = tasks.map(task => `
+        <div class="task-item">
+          <div class="task-content">
+            <div class="task-title">${task.title}</div>
+            <div class="task-desc">${task.description}</div>
+            <span class="task-status status-${task.status}">${task.status}</span>
+          </div>
+          <div class="task-actions">
+            <button class="btn-complete" onclick="updateTask(${task.id}, '${task.status === 'pendiente' ? 'completada' : 'pendiente'}')">
+              ${task.status === 'pendiente' ? '✓' : '↩️'}
+            </button>
+            <button class="btn-delete" onclick="deleteTask(${task.id})">🗑️ Eliminar</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Agregar tarea
+    document.getElementById('addTaskForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('taskTitle').value;
+      const description = document.getElementById('taskDesc').value;
+
+      try {
+        const response = await fetch('/api/tasks/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description })
+        });
+
+        if (response.ok) {
+          document.getElementById('taskTitle').value = '';
+          document.getElementById('taskDesc').value = '';
+          loadTasks();
+        }
+      } catch (error) {
+        console.error('Error agregando tarea:', error);
+      }
+    });
+
+    // Actualizar tarea
+    async function updateTask(id, status) {
+      try {
+        const response = await fetch(`/api/tasks/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+
+        if (response.ok) {
+          loadTasks();
+        }
+      } catch (error) {
+        console.error('Error actualizando tarea:', error);
+      }
+    }
+
+    // Eliminar tarea
+    async function deleteTask(id) {
+      if (confirm('¿Estás seguro?')) {
+        try {
+          const response = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+          if (response.ok) {
+            loadTasks();
+          }
+        } catch (error) {
+          console.error('Error eliminando tarea:', error);
+        }
+      }
+    }
+
+    // 2FA Setup
+    document.getElementById('setup2FABtn').addEventListener('click', async () => {
+      try {
+        const response = await fetch('/api/auth/setup-2fa', { method: 'POST' });
+        const data = await response.json();
+        
+        document.getElementById('secretCode').value = data.secret;
+        document.getElementById('qrCode').innerHTML = `<img src="${data.qrCode}" style="max-width: 250px;">`;
+        document.getElementById('modal2FA').style.display = 'flex';
+      } catch (error) {
+        console.error('Error configurando 2FA:', error);
+      }
+    });
+
+    function closeModal2FA() {
+      document.getElementById('modal2FA').style.display = 'none';
+      document.getElementById('codeVerify').value = '';
+    }
+
+    async function confirm2FA() {
+      const secret = document.getElementById('secretCode').value;
+      const token = document.getElementById('codeVerify').value;
+
+      if (token.length !== 6) {
+        alert('El código debe tener 6 dígitos');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/auth/confirm-2fa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret, token })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+          alert('2FA configurado exitosamente');
+          closeModal2FA();
+        } else {
+          alert(data.error);
+        }
+      } catch (error) {
+        console.error('Error confirmando 2FA:', error);
+      }
+    }
+
+    // Logout
+    function logout() {
+      fetch('/api/auth/logout', { method: 'POST' }).then(() => {
+        window.location.href = '/login';
+      });
+    }
+
+    // Inicializar
+    loadUsername();
+    loadTasks();
+    setInterval(loadTasks, 5000); // Recargar cada 5 segundos
+  </script>
+</body>
+</html>

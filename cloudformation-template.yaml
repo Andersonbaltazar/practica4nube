@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Task App with 2FA - CloudFormation Template'
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair
+  
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    Description: EC2 instance type
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0c55b159cbfafe1f0  # Ubuntu 20.04 LTS
+    us-west-2:
+      AMI: ami-0d1cd67c26f5fca19  # Ubuntu 20.04 LTS
+    eu-west-1:
+      AMI: ami-0dad359ff462124ca  # Ubuntu 20.04 LTS
+
+Resources:
+  # Security Group
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Task App
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 10.0.0.0/8
+
+  # RDS Security Group
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref AppSecurityGroup
+
+  # DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for RDS
+      SubnetIds:
+        - subnet-12345678
+        - subnet-87654321
+      Tags:
+        - Key: Name
+          Value: task-app-db-subnet
+
+  # RDS PostgreSQL Instance
+  PostgresDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: task-app-db
+      Engine: postgres
+      EngineVersion: '14.7'
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: '20'
+      StorageType: gp2
+      MasterUsername: postgres
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DBSecret}:SecretString:password}}'
+      VPCSecurityGroups:
+        - !GetAtt DBSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+      MultiAZ: false
+      StorageEncrypted: true
+      EnableCloudwatchLogsExports:
+        - postgresql
+      Tags:
+        - Key: Name
+          Value: task-app-db
+
+  # Secrets Manager para BD
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      SecretString: '{"password": "TaskApp2024!"}'
+      Name: task-app/db-password
+
+  # EC2 Instance
+  TaskAppInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: PostgresDB
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !GetAtt AppSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # Update system
+          apt-get update
+          apt-get upgrade -y
+          
+          # Install Docker
+          apt-get install -y docker.io docker-compose
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ubuntu
+          
+          # Install Node.js and npm (for local development if needed)
+          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+          apt-get install -y nodejs
+          
+          # Clone repository or create app
+          cd /home/ubuntu
+          git clone <YOUR_REPO_URL> task-app || mkdir -p task-app
+          cd task-app
+          
+          # Create .env file with RDS endpoint
+          cat > .env << EOF
+          NODE_ENV=production
+          PORT=3000
+          DB_USER=postgres
+          DB_PASSWORD=TaskApp2024!
+          DB_HOST=${PostgresDB.Endpoint.Address}
+          DB_PORT=5432
+          DB_NAME=task_app
+          SESSION_SECRET=$(openssl rand -base64 32)
+          EOF
+          
+          # Start docker-compose
+          docker-compose up -d
+          
+          # Configure nginx as reverse proxy
+          apt-get install -y nginx
+          
+          cat > /etc/nginx/sites-available/default << 'NGINX'
+          server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+            
+            server_name _;
+            
+            location / {
+              proxy_pass http://localhost:3000;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection 'upgrade';
+              proxy_set_header Host $host;
+              proxy_cache_bypass $http_upgrade;
+            }
+          }
+          NGINX
+          
+          systemctl restart nginx
+          systemctl enable nginx
+      
+      Tags:
+        - Key: Name
+          Value: task-app-server
+
+Outputs:
+  InstanceIP:
+    Description: Public IP of the Task App Instance
+    Value: !GetAtt TaskAppInstance.PublicIp
+    Export:
+      Name: TaskAppInstanceIP
+
+  DatabaseEndpoint:
+    Description: RDS Database Endpoint
+    Value: !GetAtt PostgresDB.Endpoint.Address
+    Export:
+      Name: TaskAppDBEndpoint
+
+  AppURL:
+    Description: Task App URL
+    Value: !Sub 'http://${TaskAppInstance.PublicIp}:3000'
+    Export:
+      Name: TaskAppURL
+
+  InstanceId:
+    Description: Instance ID
+    Value: !Ref TaskAppInstance
+    Export:
+      Name: TaskAppInstanceId

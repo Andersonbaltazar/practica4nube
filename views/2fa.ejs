@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificación 2FA - Task App</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 100%; max-width: 400px; }
+    h1 { color: #333; margin-bottom: 30px; text-align: center; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 8px; color: #555; font-weight: 500; }
+    input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; letter-spacing: 2px; text-align: center; }
+    input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 5px rgba(102, 126, 234, 0.3); }
+    button { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #764ba2; }
+    .error { color: #e74c3c; margin-top: 10px; text-align: center; display: none; }
+    .success { color: #27ae60; margin-top: 10px; text-align: center; display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Verificación 2FA</h1>
+    <p style="text-align: center; color: #666; margin-bottom: 20px;">Ingresa el código de tu aplicador autenticador</p>
+    <form id="verify2FAForm">
+      <div class="form-group">
+        <label>Código 2FA (6 dígitos):</label>
+        <input type="text" id="token" maxlength="6" pattern="[0-9]{6}" required autofocus>
+      </div>
+      <button type="submit">Verificar</button>
+      <div class="error" id="error"></div>
+      <div class="success" id="success"></div>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById('verify2FAForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = document.getElementById('token').value;
+
+      try {
+        const response = await fetch('/api/auth/verify-2fa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          document.getElementById('success').textContent = 'Código verificado. Redirigiendo...';
+          document.getElementById('success').style.display = 'block';
+          setTimeout(() => window.location.href = '/dashboard', 1500);
+        } else {
+          document.getElementById('error').textContent = data.error;
+          document.getElementById('error').style.display = 'block';
+        }
+      } catch (error) {
+        document.getElementById('error').textContent = 'Error en la verificación';
+        document.getElementById('error').style.display = 'block';
+      }
+    });
+
+    // Solo permitir números
+    document.getElementById('token').addEventListener('keypress', (e) => {
+      if (!/[0-9]/.test(e.key)) e.preventDefault();
+    });
+  </script>
+</body>
+</html>

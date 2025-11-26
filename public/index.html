@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task App - Sistema de Tareas con 2FA</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+      min-height: 100vh; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      padding: 20px;
+    }
+    .container { 
+      background: white; 
+      padding: 50px; 
+      border-radius: 15px; 
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+      max-width: 500px; 
+      text-align: center;
+    }
+    h1 { color: #333; margin-bottom: 10px; font-size: 32px; }
+    .subtitle { color: #666; margin-bottom: 40px; font-size: 16px; }
+    .buttons { 
+      display: flex; 
+      gap: 15px; 
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn { 
+      padding: 12px 30px; 
+      border: none; 
+      border-radius: 5px; 
+      font-size: 16px; 
+      cursor: pointer; 
+      text-decoration: none;
+      transition: 0.3s;
+    }
+    .btn-primary { 
+      background: #667eea; 
+      color: white;
+    }
+    .btn-primary:hover { background: #764ba2; }
+    .btn-secondary { 
+      background: #e8e8e8; 
+      color: #333;
+    }
+    .btn-secondary:hover { background: #d0d0d0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📝 Task App</h1>
+    <p class="subtitle">Aplicación de Gestión de Tareas</p>
+
+    <div class="buttons">
+      <a href="/login" class="btn btn-primary">Iniciar Sesión</a>
+      <a href="/register" class="btn btn-primary">Registrarse</a>
+    </div>
+  </div>
+</body>
+</html>
