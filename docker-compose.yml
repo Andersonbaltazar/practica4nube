@@ -39,8 +39,7 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     networks:
       - task-network
     restart: unless-stopped
