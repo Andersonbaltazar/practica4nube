@@ -1,0 +1,129 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Task App - EC2 Ubuntu 20.04 con puerto 3000 + RDS PostgreSQL",
+
+  "Parameters": {
+    "KeyName": {
+      "Description": "Nombre del KeyPair existente",
+      "Type": "AWS::EC2::KeyPair::KeyName"
+    },
+    "VpcId": {
+      "Description": "ID de la VPC",
+      "Type": "AWS::EC2::VPC::Id"
+    },
+    "SubnetId": {
+      "Description": "ID de la Subnet",
+      "Type": "AWS::EC2::Subnet::Id"
+    },
+    "LatestAmiId": {
+      "Description": "Última AMI Ubuntu 20.04",
+      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+      "Default": "/aws/service/canonical/ubuntu/server/focal/stable/current/amd64/hvm/ebs-gp2/ami-id"
+    }
+  },
+
+  "Resources": {
+    "InstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Permite SSH (22), HTTP (80) y puerto 3000",
+        "VpcId": { "Ref": "VpcId" },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 22,
+            "ToPort": 22,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 3000,
+            "ToPort": 3000,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+
+    "DatabaseSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Permite PostgreSQL desde EC2",
+        "VpcId": { "Ref": "VpcId" },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 5432,
+            "ToPort": 5432,
+            "SourceSecurityGroupId": { "Ref": "InstanceSecurityGroup" }
+          }
+        ]
+      }
+    },
+
+    "TaskDatabase": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBInstanceIdentifier": "task-app-db",
+        "Engine": "postgres",
+        "EngineVersion": "11.21",
+        "DBInstanceClass": "db.t2.micro",
+        "AllocatedStorage": "20",
+        "MasterUsername": "postgres",
+        "MasterUserPassword": "TaskApp2024!",
+        "VPCSecurityGroups": [
+          { "Ref": "DatabaseSecurityGroup" }
+        ],
+        "BackupRetentionPeriod": 7,
+        "PubliclyAccessible": false
+      }
+    },
+
+    "TaskInstance": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": "TaskDatabase",
+      "Properties": {
+        "InstanceType": "t2.micro",
+        "KeyName": { "Ref": "KeyName" },
+        "ImageId": { "Ref": "LatestAmiId" },
+        "SubnetId": { "Ref": "SubnetId" },
+        "SecurityGroupIds": [
+          { "Ref": "InstanceSecurityGroup" }
+        ],
+        "Tags": [
+          { "Key": "Name", "Value": "Task-App-Server" }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Sub": "#!/bin/bash\napt-get update\napt-get install -y docker.io docker-compose git nodejs npm\nsystemctl start docker\nsystemctl enable docker\ncd /home/ubuntu\nsudo -u ubuntu git clone https://github.com/Andersonbaltazar/practica4nube.git app\ncd app\ncat > .env << 'EOF'\nNODE_ENV=production\nPORT=3000\nDB_USER=postgres\nDB_PASSWORD=TaskApp2024!\nDB_HOST=${TaskDatabase.Endpoint.Address}\nDB_PORT=5432\nDB_NAME=task_app\nSESSION_SECRET=secret123\nEOF\nsudo -u ubuntu npm install\ndocker-compose up -d"
+          }
+        }
+      }
+    }
+  },
+
+  "Outputs": {
+    "InstanceId": {
+      "Description": "ID de la instancia Task App",
+      "Value": { "Ref": "TaskInstance" }
+    },
+    "PublicIP": {
+      "Description": "IP pública de la instancia",
+      "Value": { "Fn::GetAtt": ["TaskInstance", "PublicIp"] }
+    },
+    "AppURL": {
+      "Description": "URL de la aplicación",
+      "Value": { "Fn::Sub": "http://${TaskInstance.PublicIp}:3000" }
+    },
+    "DatabaseEndpoint": {
+      "Description": "Endpoint de la base de datos RDS",
+      "Value": { "Fn::GetAtt": ["TaskDatabase", "Endpoint.Address"] }
+    }
+  }
+}
