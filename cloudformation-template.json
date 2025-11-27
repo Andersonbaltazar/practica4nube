@@ -7,13 +7,11 @@
       "Description": "Nombre del KeyPair existente",
       "Type": "AWS::EC2::KeyPair::KeyName"
     },
-    "VpcId": {
-      "Description": "ID de la VPC",
-      "Type": "AWS::EC2::VPC::Id"
-    },
-    "SubnetId": {
-      "Description": "ID de la Subnet",
-      "Type": "AWS::EC2::Subnet::Id"
+    "DBMasterPassword": {
+      "Description": "Contraseña para PostgreSQL",
+      "Type": "String",
+      "NoEcho": true,
+      "MinLength": 8
     },
     "LatestAmiId": {
       "Description": "Última AMI Ubuntu 20.04",
@@ -27,7 +25,6 @@
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
         "GroupDescription": "SG para Task App",
-        "VpcId": { "Ref": "VpcId" },
         "SecurityGroupIngress": [
           {
             "IpProtocol": "tcp",
@@ -55,7 +52,6 @@
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
         "GroupDescription": "SG para RDS",
-        "VpcId": { "Ref": "VpcId" },
         "SecurityGroupIngress": [
           {
             "IpProtocol": "tcp",
@@ -77,11 +73,12 @@
         "AllocatedStorage": "20",
         "StorageType": "gp2",
         "MasterUsername": "postgres",
-        "MasterUserPassword": "TaskApp2024!",
+        "MasterUserPassword": { "Ref": "DBMasterPassword" },
         "VPCSecurityGroups": [{ "Ref": "DBSecurityGroup" }],
         "BackupRetentionPeriod": 7,
         "MultiAZ": false,
         "PubliclyAccessible": false,
+        "DBName": "task_app",
         "Tags": [
           { "Key": "Name", "Value": "task-app-db" }
         ]
@@ -95,14 +92,13 @@
         "InstanceType": "t2.micro",
         "KeyName": { "Ref": "KeyName" },
         "ImageId": { "Ref": "LatestAmiId" },
-        "SubnetId": { "Ref": "SubnetId" },
         "SecurityGroupIds": [{ "Ref": "AppSecurityGroup" }],
         "Tags": [
           { "Key": "Name", "Value": "task-app-server" }
         ],
         "UserData": {
           "Fn::Base64": {
-            "Fn::Sub": "#!/bin/bash\napt-get update\napt-get install -y docker.io docker-compose git nodejs npm nginx\nsystemctl start docker\ncd /home/ubuntu\nsudo -u ubuntu git clone https://github.com/Andersonbaltazar/practica4nube.git app\ncd app\ncat > .env << 'EOF'\nNODE_ENV=production\nPORT=3000\nDB_USER=postgres\nDB_PASSWORD=TaskApp2024!\nDB_HOST=${TaskDatabase.Endpoint.Address}\nDB_PORT=5432\nDB_NAME=task_app\nSESSION_SECRET=secret123\nEOF\nsudo -u ubuntu npm install\ndocker-compose up -d\ncat > /etc/nginx/sites-available/default << 'NGINX'\nserver {\n  listen 80;\n  location / {\n    proxy_pass http://localhost:3000;\n    proxy_set_header Host $host;\n  }\n}\nNGINX\nsystemctl restart nginx"
+            "Fn::Sub": "#!/bin/bash\napt-get update\napt-get install -y docker.io docker-compose git curl\nsystemctl start docker\nusermod -aG docker ubuntu\ncd /home/ubuntu\nsudo -u ubuntu git clone https://github.com/Andersonbaltazar/practica4nube.git app\ncd app\ncat > .env << 'EOF'\nNODE_ENV=production\nPORT=3000\nDB_USER=postgres\nDB_PASSWORD=${DBMasterPassword}\nDB_HOST=${TaskDatabase.Endpoint.Address}\nDB_PORT=5432\nDB_NAME=task_app\nSESSION_SECRET=supersecret2024\nEOF\nchown ubuntu:ubuntu .env\nsudo -u ubuntu docker-compose up -d"
           }
         }
       }
@@ -115,7 +111,7 @@
       "Value": { "Ref": "TaskInstance" }
     },
     "PublicIP": {
-      "Description": "IP pública",
+      "Description": "IP pública - accede aquí",
       "Value": { "Fn::GetAtt": ["TaskInstance", "PublicIp"] }
     },
     "DatabaseEndpoint": {
@@ -124,7 +120,7 @@
     },
     "AppURL": {
       "Description": "URL de la aplicación",
-      "Value": { "Fn::Sub": "http://${TaskInstance.PublicIp}" }
+      "Value": { "Fn::Sub": "http://${TaskInstance.PublicIp}:3000" }
     }
   }
 }
