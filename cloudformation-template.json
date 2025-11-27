@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "Task App - EC2 Ubuntu 20.04 con puerto 3000 + RDS PostgreSQL",
+  "Description": "Task App - EC2 Ubuntu 20.04 + RDS PostgreSQL",
 
   "Parameters": {
     "KeyName": {
@@ -23,10 +23,10 @@
   },
 
   "Resources": {
-    "InstanceSecurityGroup": {
+    "AppSecurityGroup": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
-        "GroupDescription": "Permite SSH (22), HTTP (80) y puerto 3000",
+        "GroupDescription": "SG para Task App",
         "VpcId": { "Ref": "VpcId" },
         "SecurityGroupIngress": [
           {
@@ -51,17 +51,17 @@
       }
     },
 
-    "DatabaseSecurityGroup": {
+    "DBSecurityGroup": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
-        "GroupDescription": "Permite PostgreSQL desde EC2",
+        "GroupDescription": "SG para RDS",
         "VpcId": { "Ref": "VpcId" },
         "SecurityGroupIngress": [
           {
             "IpProtocol": "tcp",
             "FromPort": 5432,
             "ToPort": 5432,
-            "SourceSecurityGroupId": { "Ref": "InstanceSecurityGroup" }
+            "SourceSecurityGroupId": { "Ref": "AppSecurityGroup" }
           }
         ]
       }
@@ -72,16 +72,19 @@
       "Properties": {
         "DBInstanceIdentifier": "task-app-db",
         "Engine": "postgres",
-        "EngineVersion": "11.21",
-        "DBInstanceClass": "db.t2.micro",
+        "EngineVersion": "12.15",
+        "DBInstanceClass": "db.t3.micro",
         "AllocatedStorage": "20",
+        "StorageType": "gp2",
         "MasterUsername": "postgres",
         "MasterUserPassword": "TaskApp2024!",
-        "VPCSecurityGroups": [
-          { "Ref": "DatabaseSecurityGroup" }
-        ],
+        "VPCSecurityGroups": [{ "Ref": "DBSecurityGroup" }],
         "BackupRetentionPeriod": 7,
-        "PubliclyAccessible": false
+        "MultiAZ": false,
+        "PubliclyAccessible": false,
+        "Tags": [
+          { "Key": "Name", "Value": "task-app-db" }
+        ]
       }
     },
 
@@ -93,15 +96,13 @@
         "KeyName": { "Ref": "KeyName" },
         "ImageId": { "Ref": "LatestAmiId" },
         "SubnetId": { "Ref": "SubnetId" },
-        "SecurityGroupIds": [
-          { "Ref": "InstanceSecurityGroup" }
-        ],
+        "SecurityGroupIds": [{ "Ref": "AppSecurityGroup" }],
         "Tags": [
-          { "Key": "Name", "Value": "Task-App-Server" }
+          { "Key": "Name", "Value": "task-app-server" }
         ],
         "UserData": {
           "Fn::Base64": {
-            "Fn::Sub": "#!/bin/bash\napt-get update\napt-get install -y docker.io docker-compose git nodejs npm\nsystemctl start docker\nsystemctl enable docker\ncd /home/ubuntu\nsudo -u ubuntu git clone https://github.com/Andersonbaltazar/practica4nube.git app\ncd app\ncat > .env << 'EOF'\nNODE_ENV=production\nPORT=3000\nDB_USER=postgres\nDB_PASSWORD=TaskApp2024!\nDB_HOST=${TaskDatabase.Endpoint.Address}\nDB_PORT=5432\nDB_NAME=task_app\nSESSION_SECRET=secret123\nEOF\nsudo -u ubuntu npm install\ndocker-compose up -d"
+            "Fn::Sub": "#!/bin/bash\napt-get update\napt-get install -y docker.io docker-compose git nodejs npm nginx\nsystemctl start docker\ncd /home/ubuntu\nsudo -u ubuntu git clone https://github.com/Andersonbaltazar/practica4nube.git app\ncd app\ncat > .env << 'EOF'\nNODE_ENV=production\nPORT=3000\nDB_USER=postgres\nDB_PASSWORD=TaskApp2024!\nDB_HOST=${TaskDatabase.Endpoint.Address}\nDB_PORT=5432\nDB_NAME=task_app\nSESSION_SECRET=secret123\nEOF\nsudo -u ubuntu npm install\ndocker-compose up -d\ncat > /etc/nginx/sites-available/default << 'NGINX'\nserver {\n  listen 80;\n  location / {\n    proxy_pass http://localhost:3000;\n    proxy_set_header Host $host;\n  }\n}\nNGINX\nsystemctl restart nginx"
           }
         }
       }
@@ -110,20 +111,20 @@
 
   "Outputs": {
     "InstanceId": {
-      "Description": "ID de la instancia Task App",
+      "Description": "ID de la instancia",
       "Value": { "Ref": "TaskInstance" }
     },
     "PublicIP": {
-      "Description": "IP pública de la instancia",
+      "Description": "IP pública",
       "Value": { "Fn::GetAtt": ["TaskInstance", "PublicIp"] }
+    },
+    "DatabaseEndpoint": {
+      "Description": "RDS endpoint",
+      "Value": { "Fn::GetAtt": ["TaskDatabase", "Endpoint.Address"] }
     },
     "AppURL": {
       "Description": "URL de la aplicación",
-      "Value": { "Fn::Sub": "http://${TaskInstance.PublicIp}:3000" }
-    },
-    "DatabaseEndpoint": {
-      "Description": "Endpoint de la base de datos RDS",
-      "Value": { "Fn::GetAtt": ["TaskDatabase", "Endpoint.Address"] }
+      "Value": { "Fn::Sub": "http://${TaskInstance.PublicIp}" }
     }
   }
 }
