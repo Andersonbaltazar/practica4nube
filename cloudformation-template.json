@@ -38,7 +38,7 @@
           }
         ],
         "UserData": {
-          "Fn::Base64": "#!/bin/bash\nset -e\napt-get update\napt-get install -y docker.io docker-compose git curl\nsystemctl start docker\nsystemctl enable docker\nusermod -aG docker ubuntu\ncd /home/ubuntu\nsudo -u ubuntu git clone https://github.com/Andersonbaltazar/practica4nube.git app\ncd app\ncat > .env << 'EOFENV'\nNODE_ENV=production\nPORT=3000\nDB_USER=postgres\nDB_PASSWORD=TaskApp2024secure\nDB_HOST=localhost\nDB_PORT=5432\nDB_NAME=task_app\nSESSION_SECRET=supersecret2024\nEOFENV\nchown ubuntu:ubuntu .env\nsudo -u ubuntu docker-compose up -d\nsleep 10"
+          "Fn::Base64": "#!/bin/bash\nset -e\napt-get update\napt-get install -y docker.io docker-compose git curl\nsystemctl start docker\nsystemctl enable docker\nusermod -aG docker ubuntu\ncd /home/ubuntu\nsudo -u ubuntu git clone https://github.com/Andersonbaltazar/practica4nube.git app\ncd app\ncat > .env << 'EOFENV'\nNODE_ENV=production\nPORT=3000\nDB_USER=postgres\nDB_PASSWORD=TaskApp2024secure\nDB_HOST=db\nDB_PORT=5432\nDB_NAME=task_app\nSESSION_SECRET=supersecret2024\nEOFENV\nchown ubuntu:ubuntu .env\nsudo -u ubuntu docker-compose up -d\nsleep 30"
         },
         "Tags": [
           {"Key": "Name", "Value": "task-app-server"}
